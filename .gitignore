@@ -1,0 +1,6 @@
+hstream
+hstream_*
+dist/
+build/
+*.exe
+*.log
