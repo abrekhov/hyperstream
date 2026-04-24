@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HyperStream — Broadcast</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      background: #111;
+      border-bottom: 1px solid #1e1e1e;
+    }
+
+    .logo {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #00e676;
+      letter-spacing: 0.5px;
+    }
+    .logo span { color: #ffffff; }
+    .logo-sub {
+      font-size: 0.75rem;
+      color: #555;
+      font-weight: 400;
+      margin-left: 8px;
+    }
+
+    #status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      transition: all 0.3s ease;
+    }
+    .dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: #888;
+      transition: background 0.3s ease;
+    }
+    #status-badge.idle .dot      { background: #888; }
+    #status-badge.live .dot      { background: #00e676; }
+    #status-badge.live           { border-color: #00e676; color: #00e676; }
+    #status-badge.error .dot     { background: #ef5350; }
+    #status-badge.error          { color: #ef5350; border-color: #ef5350; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+      gap: 32px;
+    }
+
+    /* ── Setup card ── */
+    .card {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 12px;
+      padding: 32px;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .card h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 20px;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .source-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 18px 12px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .source-btn:hover { background: #222; border-color: #555; }
+    .source-btn.active { border-color: #00e676; color: #00e676; }
+    .source-btn svg { width: 28px; height: 28px; }
+
+    .start-btn {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      background: #00e676;
+      color: #000;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .start-btn:hover { background: #00c853; }
+    .start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Live state ── */
+    #live-section { display: none; width: 100%; max-width: 520px; }
+
+    .preview-wrapper {
+      position: relative;
+      background: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #1e1e1e;
+      margin-bottom: 20px;
+    }
+    video { width: 100%; display: block; max-height: 280px; background: #000; }
+
+    /* ── Share box ── */
+    .share-box {
+      background: #111;
+      border: 1px solid #1e1e1e;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .share-box label {
+      display: block;
+      font-size: 0.8rem;
+      color: #777;
+      margin-bottom: 8px;
+    }
+    .share-row {
+      display: flex;
+      gap: 8px;
+    }
+    .share-row input {
+      flex: 1;
+      padding: 10px 12px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 0.82rem;
+      font-family: monospace;
+      outline: none;
+    }
+    .copy-btn {
+      padding: 10px 16px;
+      border: 1px solid #333;
+      border-radius: 6px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .copy-btn:hover { background: #252525; border-color: #555; }
+    .copy-btn.copied { border-color: #00e676; color: #00e676; }
+
+    .viewer-count {
+      margin-top: 12px;
+      font-size: 0.8rem;
+      color: #555;
+    }
+    .viewer-count span { color: #ccc; font-weight: 600; }
+
+    .stop-btn {
+      width: 100%;
+      margin-top: 16px;
+      padding: 10px;
+      border: 1px solid #ef5350;
+      border-radius: 8px;
+      background: transparent;
+      color: #ef5350;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .stop-btn:hover { background: rgba(239,83,80,0.1); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#9889; Hyper<span>Stream</span><span class="logo-sub">Broadcast</span></div>
+  <div id="status-badge" class="idle">
+    <div class="dot"></div>
+    <span id="status-text">Ready</span>
+  </div>
+</header>
+
+<main>
+  <!-- Setup card -->
+  <div class="card" id="setup-section">
+    <h2>Choose a source to broadcast</h2>
+    <div class="source-grid">
+      <button class="source-btn active" id="btn-screen" onclick="selectSource('screen')">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M21 3H3a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5v2h8v-2h5a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 14H3V5h18v12z"/>
+        </svg>
+        Share Screen
+      </button>
+      <button class="source-btn" id="btn-camera" onclick="selectSource('camera')">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17 10.5V7a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3.5l4 4v-11l-4 4z"/>
+        </svg>
+        Share Camera
+      </button>
+    </div>
+    <button class="start-btn" id="start-btn" onclick="startBroadcast()">Go Live</button>
+  </div>
+
+  <!-- Live section -->
+  <div id="live-section">
+    <div class="preview-wrapper">
+      <video id="preview" autoplay muted playsinline></video>
+    </div>
+    <div class="share-box">
+      <label>Share this link with viewers</label>
+      <div class="share-row">
+        <input type="text" id="share-link" readonly />
+        <button class="copy-btn" id="copy-btn" onclick="copyLink()">Copy</button>
+      </div>
+      <div class="viewer-count">Viewers connected: <span id="viewer-count">0</span></div>
+    </div>
+    <button class="stop-btn" onclick="stopBroadcast()">&#9632; Stop Broadcast</button>
+  </div>
+</main>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+  let selectedSource = 'screen';
+  let peer = null;
+  let localStream = null;
+  let viewerCount = 0;
+
+  function selectSource(src) {
+    selectedSource = src;
+    document.getElementById('btn-screen').classList.toggle('active', src === 'screen');
+    document.getElementById('btn-camera').classList.toggle('active', src === 'camera');
+  }
+
+  function setStatus(state, text) {
+    const badge = document.getElementById('status-badge');
+    badge.className = state;
+    document.getElementById('status-text').textContent = text;
+  }
+
+  async function startBroadcast() {
+    const btn = document.getElementById('start-btn');
+    btn.disabled = true;
+    btn.textContent = 'Starting…';
+
+    try {
+      if (selectedSource === 'screen') {
+        localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      } else {
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      }
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Go Live';
+      setStatus('error', 'Permission denied');
+      return;
+    }
+
+    // Show preview
+    document.getElementById('preview').srcObject = localStream;
+
+    // Handle stream ending (user stops via browser UI)
+    localStream.getTracks().forEach(t => {
+      t.onended = () => stopBroadcast();
+    });
+
+    // Create PeerJS peer
+    peer = new Peer();
+
+    peer.on('error', (err) => {
+      console.error('PeerJS error:', err);
+      setStatus('error', 'Connection error');
+    });
+
+    peer.on('open', (id) => {
+      setStatus('live', 'LIVE');
+      document.getElementById('setup-section').style.display = 'none';
+      document.getElementById('live-section').style.display = 'block';
+
+      const viewerUrl = buildViewerUrl(id);
+      document.getElementById('share-link').value = viewerUrl;
+    });
+
+    // When a viewer registers via DataChannel, call them with our stream
+    peer.on('connection', (conn) => {
+      conn.on('open', () => {
+        if (!localStream || !peer) return;
+        const call = peer.call(conn.peer, localStream);
+        viewerCount++;
+        document.getElementById('viewer-count').textContent = viewerCount;
+
+        call.on('close', () => {
+          viewerCount = Math.max(0, viewerCount - 1);
+          document.getElementById('viewer-count').textContent = viewerCount;
+        });
+      });
+    });
+  }
+
+  function buildViewerUrl(roomId) {
+    const base = window.location.href.replace(/broadcast\.html.*$/, '');
+    return `${base}?room=${roomId}`;
+  }
+
+  function stopBroadcast() {
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
+    if (peer) {
+      peer.destroy();
+      peer = null;
+    }
+    viewerCount = 0;
+    document.getElementById('viewer-count').textContent = '0';
+    document.getElementById('preview').srcObject = null;
+    document.getElementById('setup-section').style.display = '';
+    document.getElementById('live-section').style.display = 'none';
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('start-btn').textContent = 'Go Live';
+    setStatus('idle', 'Ready');
+  }
+
+  function copyLink() {
+    const input = document.getElementById('share-link');
+    navigator.clipboard.writeText(input.value).then(() => {
+      const btn = document.getElementById('copy-btn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+</script>
+</body>
+</html>

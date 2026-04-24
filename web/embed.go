@@ -18,5 +18,7 @@ package web
 import _ "embed"
 
 //go:embed index.html
-// ViewerHTML is the embedded browser viewer page.
 var ViewerHTML []byte
+
+//go:embed broadcast.html
+var BroadcastHTML []byte

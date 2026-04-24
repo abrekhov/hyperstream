@@ -214,10 +214,12 @@
   </div>
 </main>
 
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
   // ── State ──────────────────────────────────────────────────────────────────
-  let pc = null;
+  let peer = null;
   let muted = false;
+  let roomId = null;
   let reconnectTimer = null;
 
   // ── UI helpers ─────────────────────────────────────────────────────────────
@@ -227,9 +229,13 @@
     document.getElementById('status-text').textContent = text;
   }
 
-  function showOverlay(text) {
+  function showOverlay(html) {
     const ov = document.getElementById('overlay');
-    document.getElementById('overlay-text').textContent = text;
+    if (typeof html === 'string' && html.includes('<')) {
+      ov.innerHTML = html;
+    } else {
+      document.getElementById('overlay-text').textContent = html;
+    }
     ov.classList.remove('hidden');
   }
 
@@ -244,10 +250,8 @@
     document.getElementById('mute-label').textContent = muted ? 'Unmute' : 'Mute';
     document.getElementById('mute-btn').classList.toggle('active', muted);
 
-    // Update icon
     const path = document.getElementById('mute-icon-path');
     if (muted) {
-      // Muted icon (speaker with X)
       path.setAttribute('d',
         'M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z');
     } else {
@@ -256,131 +260,110 @@
     }
   }
 
-  // ── WebRTC ──────────────────────────────────────────────────────────────────
-  async function connect() {
+  // ── PeerJS viewer connection ────────────────────────────────────────────────
+  function connect(id) {
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (peer) { peer.destroy(); peer = null; }
 
+    roomId = id;
     setStatus('connecting', 'Connecting...');
     showOverlay('Connecting to stream...');
     document.getElementById('info-ice').textContent = '—';
     document.getElementById('info-video').textContent = '—';
     document.getElementById('info-audio').textContent = '—';
 
-    // Close any old connection
-    if (pc) {
-      pc.close();
-      pc = null;
-    }
+    peer = new Peer();
 
-    pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    peer.on('error', (err) => {
+      console.error('PeerJS error:', err);
+      showOverlay('Connection error — retrying...');
+      setStatus('disconnected', 'Disconnected');
+      scheduleReconnect();
     });
 
-    // Add recvonly transceivers for video and audio
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    pc.addTransceiver('audio', { direction: 'recvonly' });
+    peer.on('open', () => {
+      // Register with broadcaster via DataChannel so they call us back with the stream
+      const conn = peer.connect(roomId);
+      conn.on('error', () => scheduleReconnect());
+    });
 
-    // Attach incoming tracks to the video element
-    pc.ontrack = (event) => {
-      const video = document.getElementById('video');
-      if (video.srcObject !== event.streams[0]) {
-        video.srcObject = event.streams[0];
-      }
+    // Broadcaster calls us with the stream
+    peer.on('call', (call) => {
+      call.answer(); // no local stream — viewer only
 
-      if (event.track.kind === 'video') {
-        document.getElementById('info-video').textContent = event.track.label || 'VP8';
-      }
-      if (event.track.kind === 'audio') {
-        document.getElementById('info-audio').textContent = event.track.label || 'Opus';
-      }
-    };
+      call.on('stream', (remoteStream) => {
+        const video = document.getElementById('video');
+        video.srcObject = remoteStream;
 
-    // Update ICE state in the info bar
-    pc.oniceconnectionstatechange = () => {
-      const state = pc.iceConnectionState;
-      document.getElementById('info-ice').textContent = state;
+        const tracks = remoteStream.getTracks();
+        const vTrack = tracks.find(t => t.kind === 'video');
+        const aTrack = tracks.find(t => t.kind === 'audio');
+        if (vTrack) document.getElementById('info-video').textContent = vTrack.label || 'VP8';
+        if (aTrack) document.getElementById('info-audio').textContent = aTrack.label || 'Opus';
 
-      switch (state) {
-        case 'connected':
-        case 'completed':
-          setStatus('live', 'LIVE');
-          hideOverlay();
-          break;
-        case 'failed':
-        case 'closed':
-          setStatus('disconnected', 'Disconnected');
-          showOverlay('Reconnecting in 3 s...');
-          scheduleReconnect();
-          break;
-        case 'disconnected':
-          setStatus('connecting', 'Reconnecting...');
-          showOverlay('Connection lost — reconnecting...');
-          scheduleReconnect();
-          break;
-      }
-    };
-
-    // Show stream once video starts playing
-    const video = document.getElementById('video');
-    video.onplaying = () => {
-      if (pc && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) {
         setStatus('live', 'LIVE');
+        document.getElementById('info-ice').textContent = 'connected';
         hideOverlay();
-      }
-    };
-
-    // Create offer
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-
-    // Wait for ICE gathering to complete
-    await new Promise((resolve) => {
-      if (pc.iceGatheringState === 'complete') { resolve(); return; }
-      pc.onicegatheringstatechange = () => {
-        if (pc.iceGatheringState === 'complete') resolve();
-      };
-      // Fallback timeout in case gathering takes too long
-      setTimeout(resolve, 6000);
-    });
-
-    // POST offer to server
-    let resp;
-    try {
-      resp = await fetch('/offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp })
       });
-    } catch (err) {
-      console.error('Failed to reach /offer:', err);
-      showOverlay('Server unreachable — retrying...');
-      scheduleReconnect();
-      return;
-    }
 
-    if (!resp.ok) {
-      console.error('Offer rejected:', resp.status, await resp.text());
-      showOverlay('Server error — retrying...');
-      scheduleReconnect();
-      return;
-    }
+      call.on('close', () => {
+        setStatus('disconnected', 'Disconnected');
+        showOverlay('Stream ended — reconnecting...');
+        scheduleReconnect();
+      });
 
-    const answer = await resp.json();
-    await pc.setRemoteDescription({ type: answer.type, sdp: answer.sdp });
-
-    setStatus('connecting', 'Waiting for media...');
+      call.on('error', () => scheduleReconnect());
+    });
   }
 
   function scheduleReconnect() {
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
-      connect();
+      if (roomId) connect(roomId);
     }, 3000);
   }
 
+  // ── Room input form (shown when no ?room= param) ───────────────────────────
+  function showRoomForm() {
+    setStatus('disconnected', 'No room');
+    showOverlay(`
+      <div class="spinner" style="display:none"></div>
+      <p style="color:#aaa;margin-bottom:12px">Enter the room ID from the broadcaster:</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">
+        <input id="room-input" type="text" placeholder="e.g. abc123xyz"
+          style="padding:8px 12px;border-radius:6px;border:1px solid #555;
+                 background:#1a1a1a;color:#e0e0e0;font-size:0.875rem;width:220px"
+          onkeydown="if(event.key==='Enter')submitRoomForm()">
+        <button onclick="submitRoomForm()"
+          style="padding:8px 18px;border:1px solid #333;border-radius:6px;
+                 background:#1a1a1a;color:#e0e0e0;font-size:0.875rem;cursor:pointer">
+          Watch
+        </button>
+      </div>
+      <p style="color:#555;font-size:0.75rem;margin-top:10px">
+        Or get a full link from the broadcaster
+      </p>`);
+  }
+
+  function submitRoomForm() {
+    const input = document.getElementById('room-input');
+    const id = (input ? input.value : '').trim();
+    if (!id) return;
+    history.replaceState(null, '', `?room=${encodeURIComponent(id)}`);
+    connect(id);
+  }
+
   // ── Bootstrap ───────────────────────────────────────────────────────────────
-  connect();
+  (function bootstrap() {
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get('room');
+    if (room) {
+      connect(room);
+    } else {
+      showRoomForm();
+    }
+  })();
 </script>
 </body>
 </html>

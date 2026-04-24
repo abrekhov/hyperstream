@@ -90,3 +90,11 @@ func (h *Hub) ServeViewer(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to serve viewer", http.StatusInternalServerError)
 	}
 }
+
+// ServeBroadcast serves the HTML broadcaster page.
+func (h *Hub) ServeBroadcast(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(web.BroadcastHTML); err != nil {
+		http.Error(w, "failed to serve broadcast page", http.StatusInternalServerError)
+	}
+}
