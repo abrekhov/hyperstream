@@ -229,13 +229,9 @@
     document.getElementById('status-text').textContent = text;
   }
 
-  function showOverlay(html) {
+  function showOverlay(text) {
     const ov = document.getElementById('overlay');
-    if (typeof html === 'string' && html.includes('<')) {
-      ov.innerHTML = html;
-    } else {
-      document.getElementById('overlay-text').textContent = html;
-    }
+    ov.innerHTML = `<div class="spinner"></div><p id="overlay-text">${text}</p>`;
     ov.classList.remove('hidden');
   }
 
@@ -282,14 +278,13 @@
     });
 
     peer.on('open', () => {
-      // Register with broadcaster via DataChannel so they call us back with the stream
-      const conn = peer.connect(roomId);
-      conn.on('error', () => scheduleReconnect());
-    });
-
-    // Broadcaster calls us with the stream
-    peer.on('call', (call) => {
-      call.answer(); // no local stream — viewer only
+      // Call the broadcaster directly with an empty stream; they answer with the live stream
+      const call = peer.call(roomId, new MediaStream());
+      if (!call) {
+        showOverlay('Could not reach broadcaster — retrying...');
+        scheduleReconnect();
+        return;
+      }
 
       call.on('stream', (remoteStream) => {
         const video = document.getElementById('video');
@@ -312,7 +307,10 @@
         scheduleReconnect();
       });
 
-      call.on('error', () => scheduleReconnect());
+      call.on('error', () => {
+        showOverlay('Connection error — retrying...');
+        scheduleReconnect();
+      });
     });
   }
 
@@ -327,8 +325,8 @@
   // ── Room input form (shown when no ?room= param) ───────────────────────────
   function showRoomForm() {
     setStatus('disconnected', 'No room');
-    showOverlay(`
-      <div class="spinner" style="display:none"></div>
+    const ov = document.getElementById('overlay');
+    ov.innerHTML = `
       <p style="color:#aaa;margin-bottom:12px">Enter the room ID from the broadcaster:</p>
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:center">
         <input id="room-input" type="text" placeholder="e.g. abc123xyz"
@@ -343,7 +341,8 @@
       </div>
       <p style="color:#555;font-size:0.75rem;margin-top:10px">
         Or get a full link from the broadcaster
-      </p>`);
+      </p>`;
+    ov.classList.remove('hidden');
   }
 
   function submitRoomForm() {
