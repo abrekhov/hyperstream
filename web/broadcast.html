@@ -323,16 +323,17 @@
       document.getElementById('share-link').value = viewerUrl;
     });
 
-    // Viewers call us directly; answer with our stream
-    peer.on('call', (call) => {
-      if (!localStream) return;
-      call.answer(localStream);
-      viewerCount++;
-      document.getElementById('viewer-count').textContent = viewerCount;
-
-      call.on('close', () => {
-        viewerCount = Math.max(0, viewerCount - 1);
+    // Viewers register via DataChannel; call them back with our stream
+    peer.on('connection', (conn) => {
+      conn.on('open', () => {
+        if (!localStream || !peer) return;
+        const call = peer.call(conn.peer, localStream);
+        viewerCount++;
         document.getElementById('viewer-count').textContent = viewerCount;
+        call.on('close', () => {
+          viewerCount = Math.max(0, viewerCount - 1);
+          document.getElementById('viewer-count').textContent = viewerCount;
+        });
       });
     });
   }

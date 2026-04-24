@@ -278,13 +278,18 @@
     });
 
     peer.on('open', () => {
-      // Call the broadcaster directly with an empty stream; they answer with the live stream
-      const call = peer.call(roomId, new MediaStream());
-      if (!call) {
+      // Register with broadcaster via DataChannel; broadcaster will call us back with the stream
+      const conn = peer.connect(roomId);
+      conn.on('error', () => {
         showOverlay('Could not reach broadcaster — retrying...');
+        setStatus('disconnected', 'Disconnected');
         scheduleReconnect();
-        return;
-      }
+      });
+    });
+
+    // Broadcaster calls us once DataChannel is open
+    peer.on('call', (call) => {
+      call.answer(new MediaStream()); // receive-only — no local tracks to send
 
       call.on('stream', (remoteStream) => {
         const video = document.getElementById('video');
@@ -307,10 +312,7 @@
         scheduleReconnect();
       });
 
-      call.on('error', () => {
-        showOverlay('Connection error — retrying...');
-        scheduleReconnect();
-      });
+      call.on('error', () => scheduleReconnect());
     });
   }
 
