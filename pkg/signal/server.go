@@ -98,3 +98,11 @@ func (h *Hub) ServeBroadcast(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to serve broadcast page", http.StatusInternalServerError)
 	}
 }
+
+// ServeCall serves the HTML call page.
+func (h *Hub) ServeCall(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if _, err := w.Write(web.CallHTML); err != nil {
+		http.Error(w, "failed to serve call page", http.StatusInternalServerError)
+	}
+}

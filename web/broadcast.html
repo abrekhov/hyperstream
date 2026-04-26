@@ -268,6 +268,15 @@
   let localStream = null;
   let viewerCount = 0;
 
+  const PEER_CONFIG = {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+  };
+
   function selectSource(src) {
     selectedSource = src;
     document.getElementById('btn-screen').classList.toggle('active', src === 'screen');
@@ -307,7 +316,7 @@
     });
 
     // Create PeerJS peer
-    peer = new Peer();
+    peer = new Peer(PEER_CONFIG);
 
     peer.on('error', (err) => {
       console.error('PeerJS error:', err);

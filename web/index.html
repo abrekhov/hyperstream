@@ -222,6 +222,15 @@
   let roomId = null;
   let reconnectTimer = null;
 
+  const PEER_CONFIG = {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+  };
+
   // ── UI helpers ─────────────────────────────────────────────────────────────
   function setStatus(state, text) {
     const badge = document.getElementById('status-badge');
@@ -268,7 +277,7 @@
     document.getElementById('info-video').textContent = '—';
     document.getElementById('info-audio').textContent = '—';
 
-    peer = new Peer();
+    peer = new Peer(PEER_CONFIG);
 
     peer.on('error', (err) => {
       console.error('PeerJS error:', err);

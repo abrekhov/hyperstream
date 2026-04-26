@@ -22,3 +22,6 @@ var ViewerHTML []byte
 
 //go:embed broadcast.html
 var BroadcastHTML []byte
+
+//go:embed call.html
+var CallHTML []byte

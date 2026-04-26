@@ -93,6 +93,7 @@ func Broadcast(cmd *cobra.Command, args []string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", hub.ServeViewer)
 	mux.HandleFunc("/broadcast", hub.ServeBroadcast)
+	mux.HandleFunc("/call", hub.ServeCall)
 	mux.HandleFunc("/offer", hub.HandleOffer)
 
 	addr := fmt.Sprintf(":%d", port)
